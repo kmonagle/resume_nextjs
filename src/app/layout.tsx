@@ -16,8 +16,8 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Links",
-  description: "Create and track short links.",
+  title: "NextJS Links",
+  description: "Create and track short links, implemented in NextJS.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
