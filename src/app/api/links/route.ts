@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { generateUniqueLink } from "@/server/services/link-service";
 import { createLinkSchema } from "@/shared/schemas/link-schema";
+import { findAllLinks } from "@/server/repositories/link-repository";
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -18,4 +19,9 @@ export async function POST(request: Request) {
     parsed.data.title,
   );
   return Response.json(link, { status: 201 });
+}
+
+export async function GET() {
+  const links = await findAllLinks();
+  return Response.json(links);
 }

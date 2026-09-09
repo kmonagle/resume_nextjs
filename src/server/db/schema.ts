@@ -1,5 +1,12 @@
 import { relations } from "drizzle-orm";
-import { index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 
 export const links = pgTable(
   "links",
@@ -20,8 +27,9 @@ export const links = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     maxClicks: integer("max_clicks"),
     clickCount: integer("click_count").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
   },
-  (table) => [index("links_created_at_idx").on(table.createdAt)]
+  (table) => [index("links_created_at_idx").on(table.createdAt)],
 );
 
 export const clickEvents = pgTable(
@@ -42,7 +50,7 @@ export const clickEvents = pgTable(
   (table) => [
     index("click_events_link_occurred_idx").on(table.linkId, table.occurredAt),
     index("click_events_occurred_idx").on(table.occurredAt),
-  ]
+  ],
 );
 
 export const linksRelations = relations(links, ({ many }) => ({
@@ -55,3 +63,5 @@ export const clickEventsRelations = relations(clickEvents, ({ one }) => ({
     references: [links.id],
   }),
 }));
+
+export type Link = typeof links.$inferSelect;
