@@ -25,7 +25,9 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run lint
-      - run: npx tsc --noEmit
+      # `next typegen` first: RouteContext/LayoutProps are generated types that
+      # do not exist in a fresh checkout until Next writes them.
+      - run: npm run typecheck
       - run: npm test
       - run: npm run build # also applies migrations (drizzle-kit migrate)
       - name: Contract tests against the local implementation

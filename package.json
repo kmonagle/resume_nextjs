@@ -13,7 +13,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "test:contract": "vitest run --config vitest.contract.config.mts",
-    "gen:api": "openapi-typescript docs/openapi.yaml -o src/shared/generated/api.d.ts"
+    "gen:api": "openapi-typescript docs/openapi.yaml -o src/shared/generated/api.d.ts",
+    "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.103.1",
