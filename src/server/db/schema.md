@@ -1,6 +1,6 @@
 # `schema.ts`
 
-Defines the two Postgres tables this app uses, as plain TypeScript — this file is the single source of truth for both the database structure and the TypeScript types Drizzle infers from it. There is no separate schema language to learn (unlike Prisma's `.prisma` DSL); `pgTable(...)` calls *are* the schema, and running them through `drizzle-kit` is what turns them into real SQL migrations (see "How migrations work" below).
+Defines the two Postgres tables this app (and every backend implementation of `docs/openapi.yaml`) uses, as plain TypeScript — this file is the single source of truth for both the database structure and the TypeScript types Drizzle infers from it. There is no separate schema language to learn (unlike Prisma's `.prisma` DSL); `pgTable(...)` calls *are* the schema, and running them through `drizzle-kit` is what turns them into real SQL migrations (see "How migrations work" below).
 
 ## Tables
 
@@ -18,8 +18,10 @@ One row per short link. Columns and why they exist:
 | `expiresAt` | `timestamp`, nullable | If set, the link stops working after this time. `null` means "never expires." |
 | `maxClicks` | `integer`, nullable | If set, the link stops working once `clickCount` reaches it. `null` means "unlimited." |
 | `clickCount` | `integer`, default `0` | **Denormalized** running total of clicks. See "Why `clickCount` is denormalized" below. |
+| `isActive` | `boolean`, default `true` | Manual on/off switch. A deactivated link answers `410 Gone`. |
+| `ownerId` | `text`, not null | The anonymous visitor (random id in an `httpOnly` cookie) that created the link. Every dashboard read and toggle filters on it. This is scoping for a public demo, **not** authentication. The migration backfills existing rows with the placeholder `legacy` and then drops the default, so nothing can insert a link without an owner. |
 
-Index: `links_created_at_idx` on `createdAt`, supporting the dashboard's "most recent first" listing without a full table scan.
+Indexes: `links_created_at_idx` on `createdAt` (used by the retention cleanup) and `links_owner_created_idx` on `(ownerId, createdAt)`, which serves the dashboard's "my links, newest first" query without a sort.
 
 ### `click_events`
 
@@ -38,10 +40,10 @@ Two indexes: `[linkId, occurredAt]` (composite — supports "all clicks for link
 
 Strictly speaking, `clickCount` is redundant — it's just `COUNT(*)` of `click_events` for that link. We store it anyway, directly on `links`, for two reasons:
 
-1. **Cap-checking needs to be cheap and atomic.** Every redirect has to check "has this link hit its `maxClicks` limit?" A running counter on the row itself lets that check happen as part of a single guarded `UPDATE` statement (see `link-service.ts` once it's written) — no `COUNT(*)` subquery on the hot path.
+1. **Cap-checking needs to be cheap and atomic.** Every redirect has to check "has this link hit its `maxClicks` limit?" A running counter on the row itself lets that check happen as part of a single guarded `UPDATE` statement (`claimClick` in `link-repository.ts`) — no `COUNT(*)` subquery on the hot path. That one statement checks active/expiry/`maxClicks` *and* increments, so concurrent requests cannot overshoot a limit: Postgres locks the row and the second request re-evaluates the `WHERE` clause against the already-incremented value.
 2. **List views need it cheaply too.** The dashboard shows click counts for potentially many links at once; reading an integer column is much cheaper than aggregating `click_events` per row.
 
-The tradeoff: `clickCount` can drift from reality if it's ever updated outside the guarded increment path. We accept that because every write to it goes through one function (`recordClickAndGetRedirectTarget` in the service layer) — there's exactly one place in the codebase allowed to increment it.
+The tradeoff: `clickCount` can drift from reality if it's ever updated outside the guarded increment path. We accept that because every write to it goes through one function (`claimClick` in `link-repository.ts`) — there's exactly one place in the codebase allowed to increment it. Any other backend implementation must reproduce that single guarded statement; `contract-tests/` verifies it.
 
 ## Relations
 
@@ -49,9 +51,11 @@ The tradeoff: `clickCount` can drift from reality if it's ever updated outside t
 
 ## How migrations work
 
-Nothing here talks to a real database yet. `schema.ts` is a description of the *desired* table shape. Turning that into an actual Postgres table happens in two steps, both via the `drizzle-kit` CLI (configured in `drizzle.config.ts` at the repo root):
+`schema.ts` is a description of the *desired* table shape. Turning that into a real Postgres table happens in two steps, both via the `drizzle-kit` CLI (configured in `drizzle.config.ts` at the repo root):
 
-1. `npm run db:generate` — diffs this file against the last known schema state and writes a plain `.sql` migration file into `/drizzle`. You can (and should) read the generated SQL before applying it.
-2. `npm run db:migrate` — actually runs any pending `.sql` files in `/drizzle` against the database at `DIRECT_URL`.
+1. `npm run db:generate` — diffs this file against the last known schema state and writes a plain `.sql` migration file into `/drizzle`. You can (and should) read the generated SQL before applying it, and edit it when the generated version would fail on existing data (see `0002_owner_id.sql`, which backfills before enforcing `NOT NULL`).
+2. `npm run db:migrate` — runs any pending `.sql` files against the database at `DIRECT_URL`. The `build` script runs this on every deploy.
 
-This two-step split (generate, then migrate) is deliberate: it means schema changes are reviewable SQL files committed to git, not something applied silently.
+Because several backend implementations share this schema, **migrations live only in this repo**; backends never migrate.
+
+This two-step split is deliberate: schema changes are reviewable SQL files committed to git, not something applied silently.

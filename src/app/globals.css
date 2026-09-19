@@ -1,3 +1,6 @@
+/* Why this file exists: the global stylesheet. Tailwind v4 is loaded with one
+   @import; theme tokens below map our font variables (set in layout.tsx) to
+   Tailwind's `font-sans` / `font-mono` classes. */
 @import "tailwindcss";
 
 @theme inline {

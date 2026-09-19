@@ -1,7 +1,10 @@
+// Why this file exists: Next renders this when anything under /dashboard throws
+// (for example the database is unreachable), instead of a blank page. It must
+// be a Client Component. `retry` re-fetches and re-renders the failed segment
+// (the prop is named `retry` in Next 16.3; older versions called it `reset`).
 "use client";
 
 export default function DashboardError({
-  error,
   retry,
 }: {
   error: Error & { digest?: string };

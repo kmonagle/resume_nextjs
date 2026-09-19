@@ -1,3 +1,5 @@
+// Why this file exists: the site header. It is a Client Component only because it
+// needs usePathname() to highlight the current page.
 "use client";
 
 import Link from "next/link";

@@ -1,119 +1,19 @@
-import Link from "next/link";
-import { findAllLinks } from "@/server/repositories/link-repository";
-import { getLinkStatus, type LinkStatus } from "@/shared/lib/link-status";
-import { LinkActiveToggle } from "./link-active-toggle";
-
-const STATUS_LABEL: Record<LinkStatus, string> = {
-  active: "Active",
-  expired: "Expired",
-  max_clicks: "Limit reached",
-  disabled: "Disabled",
-};
-
-const STATUS_DOT: Record<LinkStatus, string> = {
-  active: "bg-green-600",
-  expired: "bg-red-600",
-  max_clicks: "bg-amber-600",
-  disabled: "bg-zinc-400 dark:bg-zinc-600",
-};
+// Why this file exists: the SERVER half of the dashboard. It fetches the first
+// snapshot of links during server rendering, so the page arrives with data
+// already in it (no spinner), then hands it to the client component that
+// keeps it live.
+import { getLinkApi } from "@/server/link-api";
+import { readVisitorId } from "@/server/visitor";
+import { toLinkDto } from "@/shared/lib/link-dto";
+import { LinksTable } from "./links-table";
 
 export async function LinksList() {
-  const links = await findAllLinks();
-  const activeCount = links.filter(
-    (link) => getLinkStatus(link) === "active",
-  ).length;
+  // cookies() (inside readVisitorId) is a request-time API, so this route is
+  // rendered per request and never frozen at build time with stale data.
+  const ownerId = await readVisitorId();
+  const links = ownerId ? await getLinkApi().listLinks(ownerId) : [];
 
-  return (
-    <div>
-      <div className="flex items-baseline justify-between border-b border-zinc-200 pb-4 dark:border-zinc-800">
-        <h1 className="text-lg font-medium text-zinc-900 dark:text-zinc-50">
-          Links
-        </h1>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-zinc-500">{activeCount} active</span>
-          <Link
-            href="/"
-            className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-300"
-          >
-            New link
-          </Link>
-        </div>
-      </div>
-
-      {links.length === 0 ? (
-        <p className="py-8 text-sm text-zinc-500">
-          No links yet — create your first one.
-        </p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-zinc-500">
-                <th className="py-3 font-normal" scope="col">
-                  Link
-                </th>
-                <th className="py-3 font-normal" scope="col">
-                  Destination
-                </th>
-                <th className="py-3 text-right font-normal" scope="col">
-                  Clicks
-                </th>
-                <th className="py-3 font-normal" scope="col">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {links.map((link) => {
-                const status = getLinkStatus(link);
-                return (
-                  <tr
-                    key={link.id}
-                    className="border-t border-zinc-200 dark:border-zinc-800"
-                  >
-                    <td className="py-3 pr-4">
-                      {link.title ? (
-                        <>
-                          <div className="font-medium text-zinc-900 dark:text-zinc-50">
-                            {link.title}
-                          </div>
-                          <div className="font-mono text-xs text-zinc-500">
-                            /r/{link.shortCode}
-                          </div>
-                        </>
-                      ) : (
-                        <div className="font-mono text-zinc-900 dark:text-zinc-50">
-                          /r/{link.shortCode}
-                        </div>
-                      )}
-                    </td>
-                    <td className="py-3 pr-4">
-                      <div
-                        className="max-w-[240px] truncate font-mono text-zinc-500"
-                        title={link.targetUrl}
-                      >
-                        {link.targetUrl}
-                      </div>
-                    </td>
-                    <td className="py-3 pr-4 text-right font-mono text-zinc-900 dark:text-zinc-50">
-                      {link.clickCount}
-                    </td>
-                    <td className="py-3">
-                      <span className="flex items-center gap-2">
-                        <span
-                          className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[status]}`}
-                        />
-                        {STATUS_LABEL[status]}
-                      </span>
-                      <LinkActiveToggle id={link.id} isActive={link.isActive} />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
+  // Only plain JSON-safe data can cross from a Server to a Client Component;
+  // a Date would not, which is why we pass DTOs with ISO strings.
+  return <LinksTable initialLinks={links.map((link) => toLinkDto(link))} />;
 }

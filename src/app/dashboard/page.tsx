@@ -1,3 +1,5 @@
+// Why this file exists: the /dashboard route. Suspense shows a lightweight
+// fallback while the server component below fetches the links.
 import { Suspense } from "react";
 import { LinksList } from "@/components/links-list";
 

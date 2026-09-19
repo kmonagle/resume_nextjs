@@ -1,0 +1,231 @@
+openapi: 3.1.0
+info:
+  title: Short link backend contract
+  version: "1"
+  description: |
+    The contract every backend implementation (Next.js/Drizzle, Go, Java,
+    C#, Python) must satisfy. It is the source of truth: types are generated
+    from it (`npm run gen:api`) and `contract-tests/` verifies behaviour that a
+    schema alone cannot express (atomic click limits, owner isolation, expiry).
+
+    All implementations share ONE Postgres schema (see drizzle/*.sql).
+    Migrations are owned by this repo; backends never migrate.
+
+    ## Identity
+    The browser never talks to a backend directly. The Next.js BFF identifies
+    the anonymous visitor by cookie and forwards it as `X-Owner-Id`.
+    Backends trust that header ONLY because the request also carries the
+    shared bearer token. Without a valid token they must answer 401.
+    (Next.js's own public routes live under `/api` and use the cookie instead
+    of the header; the contract tests support both via an identity switch.)
+
+    ## Open endpoints
+    `GET /r/{code}` and `GET /meta` need no token: anonymous visitors follow
+    short links, and /meta is a harmless health/identity probe.
+servers:
+  - url: http://localhost:8080
+    description: A backend implementation
+
+paths:
+  /links:
+    post:
+      operationId: createLink
+      summary: Create a short link owned by X-Owner-Id
+      security: [{ bearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/OwnerId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateLink" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Link" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: The requested custom short code is already taken
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: The owner (or the whole table) has hit a size limit
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    get:
+      operationId: listLinks
+      summary: The owner's links, newest first
+      description: Never returns another owner's links.
+      security: [{ bearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/OwnerId" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Link" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /links/{id}:
+    patch:
+      operationId: setLinkActive
+      summary: Enable or disable a link
+      description: Returns 404 (not 403) for links the owner does not own.
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/OwnerId" }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [isActive]
+              properties:
+                isActive: { type: boolean }
+      responses:
+        "200":
+          description: Updated link
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Link" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: No such link for this owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /r/{code}:
+    get:
+      operationId: followLink
+      summary: Redirect to the target and count the click
+      description: |
+        Counting is atomic: the check (active, not expired, under maxClicks)
+        and the increment happen in a single SQL statement, so N concurrent
+        requests against a link with maxClicks=2 yield exactly two 307s and
+        N-2 410s. Never cache this response.
+      security: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "307":
+          description: Redirect to the target URL
+          headers:
+            Location: { schema: { type: string, format: uri } }
+        "404": { description: No link with that code }
+        "410":
+          description: The link exists but can no longer be followed
+          content:
+            text/plain:
+              schema: { type: string }
+
+  /meta:
+    get:
+      operationId: getMeta
+      summary: Which implementation is answering
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Meta" }
+
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer }
+  parameters:
+    OwnerId:
+      name: X-Owner-Id
+      in: header
+      required: true
+      description: Anonymous visitor id set by the BFF (1-64 chars, [A-Za-z0-9_-]).
+      schema: { type: string, minLength: 1, maxLength: 64 }
+  responses:
+    Unauthorized:
+      description: Missing or wrong bearer token
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ValidationError:
+      description: Request body failed validation
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Error"
+              - type: object
+                properties:
+                  fieldErrors:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items: { type: string }
+  schemas:
+    CreateLink:
+      type: object
+      required: [targetUrl]
+      properties:
+        targetUrl:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: Must be http or https.
+        title: { type: string, maxLength: 100 }
+        expiresAt:
+          type: string
+          format: date-time
+          description: Must be in the future.
+        maxClicks: { type: integer, minimum: 1, maximum: 1000000 }
+        shortCode:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{3,32}$"
+          description: Custom code; generated when omitted.
+    Link:
+      type: object
+      required:
+        [id, shortCode, targetUrl, title, createdAt, expiresAt, maxClicks, clickCount, isActive, status]
+      properties:
+        id: { type: string }
+        shortCode: { type: string }
+        targetUrl: { type: string }
+        title: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: [string, "null"], format: date-time }
+        maxClicks: { type: [integer, "null"] }
+        clickCount: { type: integer, minimum: 0 }
+        isActive: { type: boolean }
+        status:
+          type: string
+          enum: [active, expired, max_clicks, disabled]
+          description: |
+            Derived, evaluated when the response is built. Precedence:
+            disabled, then expired, then max_clicks, else active.
+    Meta:
+      type: object
+      required: [implementation, contractVersion]
+      properties:
+        implementation:
+          type: string
+          example: Next.js + Drizzle
+        contractVersion: { type: string, example: "1" }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }

@@ -11,9 +11,12 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test:contract": "vitest run --config vitest.contract.config.mts",
+    "gen:api": "openapi-typescript docs/openapi.yaml -o src/shared/generated/api.d.ts"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.103.1",
     "drizzle-orm": "^0.45.2",
     "next": "16.3.4",
     "next-themes": "^0.4.6",
@@ -32,6 +35,7 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
+    "openapi-typescript": "^7.13.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^5.0.0"

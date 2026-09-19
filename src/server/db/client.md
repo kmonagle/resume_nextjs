@@ -1,6 +1,6 @@
 # `client.ts`
 
-Exports a single shared `db` object — the Drizzle query interface every repository imports and uses. Nothing outside `server/repositories/*` should import from this file directly (see the layering rule in the top-level README once it exists).
+Exports a single shared `db` object — the Drizzle query interface every repository imports and uses. Nothing outside `server/repositories/*` should import from this file directly (see the layering notes in the top-level README).
 
 ## The problem this file solves: connection exhaustion during dev
 
@@ -28,6 +28,13 @@ export const db = drizzle(conn, { schema });
 On the *first* load, `globalForDb.conn` is `undefined`, so we create a real connection and stash it. On every subsequent hot reload, `globalForDb.conn` already exists, so we just reuse it — one connection for the lifetime of the dev server process, no matter how many times you save a file.
 
 The `NODE_ENV !== "production"` guard means we only bother with this global-stashing trick in development. In production, each server instance starts once and stays running (no hot-reload cycle), so there's no leak to guard against, and skipping the global assignment is marginally cleaner.
+
+## Two settings worth knowing
+
+- `prepare: false` — Neon's *pooled* connection string goes through PgBouncer in transaction mode, which cannot handle the named prepared statements `postgres.js` uses by default. Without this you get intermittent "prepared statement does not exist" errors.
+- `max: 5` — several services (this app plus each backend implementation) share one database, so each keeps its pool small.
+
+The URL comes from `getEnv()` (`src/server/env.ts`), which validates it with zod instead of a bare `process.env.DATABASE_URL!`.
 
 ## Why `postgres.js` instead of another driver
 

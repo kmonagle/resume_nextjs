@@ -1,0 +1,35 @@
+# Why this file exists: runs the checks on every push, including the contract
+# suite against the standalone Next.js implementation. When other-language
+# backends exist, this is where the same suite gets run against each of them.
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_PASSWORD: dev, POSTGRES_DB: links }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:dev@localhost:5432/links
+      DIRECT_URL: postgres://postgres:dev@localhost:5432/links
+      NEXT_PUBLIC_BASE_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npm run build # also applies migrations (drizzle-kit migrate)
+      - name: Contract tests against the local implementation
+        run: |
+          npm start &
+          npx wait-on http://localhost:3000/api/meta
+          npm run test:contract
