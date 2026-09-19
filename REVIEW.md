@@ -60,9 +60,9 @@ where noted, by tests.
   contract tests. Both call the same `LinkApi`.
 - **Unused dependencies** `recharts` and `next-themes` are still in `package.json`
   (no charts or theme toggle yet); remove them or use them.
-- **Two external backends exist (Go, Python).** The remote adapter passes the
+- **Three external backends exist (Go, Python, C#).** The remote adapter passes the
   contract suite against each, in CI (the `remote` job), so the browser → Next.js →
-  backend path is checked on every push. Java and C# are not built.
+  backend path is checked on every push. Java is not built.
 - **Not automated: the browser UI.** Live polling, the create form and the toggle
   were checked by hand in a browser (on Render, against both Go and Python), but no
   end-to-end browser test (Playwright, say) runs in CI. The unit tests, the contract
