@@ -55,6 +55,7 @@ jobs:
           - { backend: go, repo: kmonagle/resume_go, expect: "Go net/http + pgx" }
           - { backend: python, repo: kmonagle/resume_python, expect: "Python FastAPI + SQLAlchemy" }
           - { backend: csharp, repo: kmonagle/resume_csharp, expect: "C# ASP.NET Core + EF Core" }
+          - { backend: java, repo: kmonagle/resume_java, expect: "Java Spring Boot + JPA" }
     services:
       postgres:
         image: postgres:17

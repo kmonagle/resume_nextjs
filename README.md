@@ -122,7 +122,7 @@ them one after the other would double the wait. So:
 
 - **`test`**: lint, types, unit tests, build (which applies the migrations), and the
   contract suite against this app running on its own (`LINK_BACKEND=local`).
-- **`remote`**: runs once per backend in a matrix (Go, Python, C#). It starts a throwaway
+- **`remote`**: runs once per backend in a matrix (Go, Python, C#, Java). It starts a throwaway
   Postgres, builds and starts that backend's Docker image from its repo, starts this
   app with `LINK_BACKEND=remote` pointed at it, checks `/api/meta` names the backend
   (so a run can't pass by silently staying in local mode), and runs the same contract
@@ -134,7 +134,6 @@ them one after the other would double the wait. So:
 ## Status and next steps
 
 Done: the `local` and `remote` implementations, the contract, and tests. The same
-contract suite passes against the standalone app, against the Go, Python and C# services
+contract suite passes against the standalone app, against the Go, Python, C# and Java services
 directly, and against this app in `remote` mode in front of each of them (all in CI).
-Next: more backends (Java, say), which each need only their own repo and one matrix
-line here. See `REVIEW.md` for the code review and open items.
+Next: more backends, which each need only their own repo and one matrix line here. See `REVIEW.md` for the code review and open items.
