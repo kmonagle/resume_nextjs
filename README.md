@@ -116,10 +116,25 @@ them one after the other would double the wait. So:
   rendering.
 - The default `LINK_BACKEND=local` needs no second service at all.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` has two jobs:
+
+- **`test`**: lint, types, unit tests, build (which applies the migrations), and the
+  contract suite against this app running on its own (`LINK_BACKEND=local`).
+- **`remote`**: runs once per backend in a matrix (Go, Python). It starts a throwaway
+  Postgres, builds and starts that backend's Docker image from its repo, starts this
+  app with `LINK_BACKEND=remote` pointed at it, checks `/api/meta` names the backend
+  (so a run can't pass by silently staying in local mode), and runs the same contract
+  suite. Each backend's own CI proves it passes the contract when called directly;
+  this job proves the path the live site uses: browser → this app → backend. Adding a
+  backend is one line in the matrix. Backends are checked out at `main`, so a breaking
+  change over there shows up here; pin a `ref` to freeze one.
+
 ## Status and next steps
 
-Done: the `local` and `remote` implementations, the contract, and tests. The
-same contract suite passes against the standalone app, the Go service directly,
-and this app running in `remote` mode in front of Go. Next: more backends (Java,
-C#, Python) and a CI job that runs this app in remote mode against each. See
-`REVIEW.md` for the code review and open items.
+Done: the `local` and `remote` implementations, the contract, and tests. The same
+contract suite passes against the standalone app, against the Go and Python services
+directly, and against this app in `remote` mode in front of each of them (all in CI).
+Next: more backends (Java, C#), which each need only their own repo and one matrix
+line here. See `REVIEW.md` for the code review and open items.

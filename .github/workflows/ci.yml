@@ -1,6 +1,11 @@
-# Why this file exists: runs the checks on every push, including the contract
-# suite against the standalone Next.js implementation. When other-language
-# backends exist, this is where the same suite gets run against each of them.
+# Why this file exists: runs the checks on every push.
+#   test   - lint, types, unit tests, build, and the contract suite against this
+#            app running on its own (LINK_BACKEND=local).
+#   remote - proves the PATH the live site uses: this app in LINK_BACKEND=remote
+#            mode, in front of each other-language backend, passing the same
+#            contract suite. Each backend repo's own CI proves that backend passes
+#            the contract when called directly; this job proves the Next.js
+#            adapter (src/server/link-api/remote.ts) works against it.
 name: CI
 on: [push, pull_request]
 
@@ -35,3 +40,81 @@ jobs:
           npm start &
           npx wait-on http://localhost:3000/api/meta
           npm run test:contract
+
+  # Runs once per backend in the matrix. To cover a new backend, add ONE line to
+  # `include`: its repo (which must have a Dockerfile that listens on $PORT, default
+  # 8080, and serves /meta) and a string that its /meta reports.
+  remote:
+    name: remote mode / ${{ matrix.backend }}
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # a broken backend must not hide results for the others
+      matrix:
+        include:
+          - { backend: go, repo: kmonagle/resume_go, expect: "Go net/http + pgx" }
+          - { backend: python, repo: kmonagle/resume_python, expect: "Python FastAPI + SQLAlchemy" }
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_PASSWORD: dev, POSTGRES_DB: links }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:dev@localhost:5432/links
+      DIRECT_URL: postgres://postgres:dev@localhost:5432/links
+      NEXT_PUBLIC_BASE_URL: http://localhost:3000
+      # Everything below tells THIS app to call a backend instead of using its own
+      # database code. The token is shared with the backend container started below.
+      LINK_BACKEND: remote
+      LINK_BACKEND_URL: http://localhost:8080
+      LINK_BACKEND_TOKEN: ci-remote-token-0123456789abcdef
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      # Also applies the migrations: the backends never migrate, so the schema in
+      # the throwaway database comes from this repo.
+      - run: npm run build
+
+      # The backend is checked out at `main`, so this job also tells you when a
+      # change over THERE breaks the site. To pin a backend to a known-good version
+      # instead, add `ref: <tag>` to that matrix entry and pass it here.
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          path: backend
+
+      - name: Build and start the ${{ matrix.backend }} backend
+        run: |
+          docker build -t backend ./backend
+          # --network host lets the container reach the Postgres service on
+          # localhost:5432 and lets this job reach the backend on localhost:8080.
+          docker run -d --name backend --network host \
+            -e DATABASE_URL -e LINK_BACKEND_TOKEN="$LINK_BACKEND_TOKEN" backend
+          for i in $(seq 30); do
+            curl -sf http://localhost:8080/meta && exit 0
+            sleep 1
+          done
+          echo "backend did not start" && exit 1
+
+      - name: Start this app in remote mode
+        run: |
+          npm start > next.log 2>&1 &
+          npx wait-on http://localhost:3000/api/meta
+          # Prove the request really went THROUGH the backend: in local mode this
+          # would say "Next.js + Drizzle", and the contract suite could pass without
+          # the remote adapter ever being used.
+          curl -sf http://localhost:3000/api/meta | tee /dev/stderr | grep -qF "${{ matrix.expect }}"
+
+      - name: Contract tests through this app to the backend
+        run: npm run test:contract
+
+      - name: Show logs if something failed
+        if: failure()
+        run: |
+          echo "=== backend ===" && docker logs backend 2>&1 | tail -50
+          echo "=== next ===" && tail -50 next.log
