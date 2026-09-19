@@ -30,12 +30,15 @@ npm run dev
 
 ```
 Browser ──► Next.js (UI + BFF) ──► LinkApi ──► local adapter ──► Postgres
-                                        └────► (later) remote adapter ──► Go / Java / C# / Python ──► same Postgres
+                                        └────► remote adapter ──► Go (Java / C# / Python later) ──► same Postgres
 ```
 
 - **`LinkApi`** (`src/server/link-api/types.ts`) is the seam. Server Actions and
   route handlers depend on it, never on a database. `LINK_BACKEND=local|remote`
-  picks the implementation at deploy time; only `local` exists so far.
+  picks the implementation at deploy time. `remote` calls a backend over HTTP
+  (`LINK_BACKEND_URL`, authenticated with `LINK_BACKEND_TOKEN`); the Go service in
+  the sibling `resume_go` repo is the first one. Short links stay on this app's
+  domain: `/r/{code}` calls the backend's redirect and passes its `Location` on.
 - **The contract** is `docs/openapi.yaml`, written first. TypeScript types are
   generated from it (a drift between contract and code fails `tsc`), and
   `contract-tests/` checks what a schema cannot express: atomic click limits
@@ -96,10 +99,27 @@ and use the user id as owner.
 BFF will send `Authorization: Bearer $LINK_BACKEND_TOKEN` and backends must
 answer 401 without it; otherwise anyone could call one with any `X-Owner-Id`.
 
+## Free-tier cold starts
+
+On Render's free plan a service sleeps after 15 idle minutes and takes about a
+minute to wake. With a remote backend both services can be asleep, and waking
+them one after the other would double the wait. So:
+
+- **Warm-up in parallel:** `src/instrumentation.ts` pings the backend's `/meta`
+  when Next starts (fire-and-forget, never awaited, because Next waits for
+  `register()` before accepting requests), so the two cold starts overlap.
+- **Long timeout:** backend calls allow 90 s. If the backend still cannot be
+  reached the API answers 503, short links answer 503 with `Retry-After`, and
+  the form shows a "waking up, try again" message instead of crashing.
+- **Footer never blocks a page:** with a remote backend the "Served by" line is
+  fetched from the browser after load, so a sleeping backend never delays
+  rendering.
+- The default `LINK_BACKEND=local` needs no second service at all.
+
 ## Status and next steps
 
-Done: everything above for the `local` implementation, with the contract and
-tests. Next: a `RemoteLinkApi` adapter, a first external backend (Dockerfile;
-Render runs Go/Python natively and Java/C# via Docker), then a CI matrix that
-runs the same contract suite against every backend. See `REVIEW.md` for the
-code review and open items.
+Done: the `local` and `remote` implementations, the contract, and tests. The
+same contract suite passes against the standalone app, the Go service directly,
+and this app running in `remote` mode in front of Go. Next: more backends (Java,
+C#, Python) and a CI job that runs this app in remote mode against each. See
+`REVIEW.md` for the code review and open items.

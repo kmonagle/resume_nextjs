@@ -25,6 +25,12 @@ import { getLinkStatus } from "@/shared/lib/link-status";
 import { LOCAL_IMPLEMENTATION } from "./implementation";
 import type { LinkApi } from "./types";
 
+const GONE_MESSAGES = {
+  expired: "This link has expired.",
+  max_clicks: "This link has reached its click limit.",
+  disabled: "This link has been deactivated.",
+} as const;
+
 // A public demo needs guard rails. They are deliberately simple: a couple of
 // COUNT queries, no Redis and no rate-limiter service.
 
@@ -45,7 +51,7 @@ function generateShortCode(): string {
 }
 
 export const localLinkApi: LinkApi = {
-  implementation: LOCAL_IMPLEMENTATION,
+  getMeta: async () => LOCAL_IMPLEMENTATION,
 
   async createLink(ownerId, input) {
     // Lazy cleanup instead of a cron job: whoever creates a link also sweeps
@@ -116,6 +122,6 @@ export const localLinkApi: LinkApi = {
     const status = getLinkStatus(link);
     // "active" here means the link changed between the two statements (for
     // example it was re-enabled). Report it as unavailable rather than guess.
-    return { status: "gone", reason: status === "active" ? "disabled" : status };
+    return { status: "gone", message: GONE_MESSAGES[status === "active" ? "disabled" : status] };
   },
 };

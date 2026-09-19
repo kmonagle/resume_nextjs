@@ -5,12 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { after } from "next/server";
 
 import { getLinkApi } from "@/server/link-api";
-
-const GONE_MESSAGES = {
-  expired: "This link has expired.",
-  max_clicks: "This link has reached its click limit.",
-  disabled: "This link has been deactivated.",
-} as const;
+import { BackendUnavailableError } from "@/server/link-api/types";
 
 export async function GET(
   request: Request,
@@ -20,10 +15,23 @@ export async function GET(
 
   // Deliberately uncached: every hit must reach the atomic claim in the
   // database, or click limits and counts would be wrong.
-  const result = await getLinkApi().followLink(shortCode, {
-    referrer: request.headers.get("referer"),
-    userAgent: request.headers.get("user-agent"),
-  });
+  let result;
+  try {
+    result = await getLinkApi().followLink(shortCode, {
+      referrer: request.headers.get("referer"),
+      userAgent: request.headers.get("user-agent"),
+    });
+  } catch (error) {
+    // Only this call is guarded: notFound() and redirect() below work by
+    // throwing, and must reach Next untouched.
+    if (error instanceof BackendUnavailableError) {
+      return new Response(
+        "The link service is waking up. Please try again in a moment.",
+        { status: 503, headers: { "Retry-After": "30" } },
+      );
+    }
+    throw error;
+  }
 
   // notFound() and redirect() work by THROWING a special error that Next
   // catches, so code after them never runs (no `return` needed).
@@ -31,7 +39,7 @@ export async function GET(
 
   // 410 Gone (not 404): the link existed but is permanently unavailable.
   if (result.status === "gone") {
-    return new Response(GONE_MESSAGES[result.reason], { status: 410 });
+    return new Response(result.message, { status: 410 });
   }
 
   // after() runs once the response has been sent, so logging the click event

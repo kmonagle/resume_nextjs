@@ -3,6 +3,8 @@
 // improvising its own.
 import { z } from "zod";
 
+import { BackendUnavailableError } from "@/server/link-api/types";
+
 // Live data must never be served from a cache: browsers, proxies or Next.
 const NO_STORE = { "Cache-Control": "no-store" };
 
@@ -36,5 +38,26 @@ export async function readJsonBody(
     return { ok: true, body: await request.json() };
   } catch {
     return { ok: false, response: errorResponse("Body must be valid JSON", 400) };
+  }
+}
+
+// The message shown when the backend cannot be reached. On Render's free tier
+// the usual cause is a cold start, which clears itself within about a minute.
+export const BACKEND_UNAVAILABLE_MESSAGE =
+  "The backend is not responding (it may be waking up). Try again in a moment.";
+
+// Runs a route handler and turns "backend unreachable" into a clean 503
+// instead of a 500 crash. Anything else, including Next's own redirect() and
+// notFound() (which work by throwing), is rethrown untouched.
+export async function orUnavailable(
+  handler: () => Promise<Response>,
+): Promise<Response> {
+  try {
+    return await handler();
+  } catch (error) {
+    if (error instanceof BackendUnavailableError) {
+      return errorResponse(BACKEND_UNAVAILABLE_MESSAGE, 503);
+    }
+    throw error;
   }
 }

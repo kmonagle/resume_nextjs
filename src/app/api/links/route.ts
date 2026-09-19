@@ -6,6 +6,7 @@ import { getLinkApi } from "@/server/link-api";
 import {
   errorResponse,
   json,
+  orUnavailable,
   readJsonBody,
   validationError,
 } from "@/server/http";
@@ -13,7 +14,10 @@ import { getOrCreateVisitorId, readVisitorId } from "@/server/visitor";
 import { toLinkDto } from "@/shared/lib/link-dto";
 import { createLinkSchema } from "@/shared/schemas/link-schema";
 
-export async function POST(request: Request) {
+export const POST = (request: Request) =>
+  orUnavailable(() => createLink(request));
+
+async function createLink(request: Request) {
   const raw = await readJsonBody(request);
   if (!raw.ok) return raw.response;
 
@@ -33,7 +37,9 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+export const GET = () => orUnavailable(listLinks);
+
+async function listLinks() {
   // Reading `cookies()` opts this handler out of static prerendering. Without
   // any request-time API, Next would run it once at build and serve that
   // snapshot forever.

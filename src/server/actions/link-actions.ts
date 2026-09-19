@@ -7,7 +7,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { BACKEND_UNAVAILABLE_MESSAGE } from "@/server/http";
 import { getLinkApi } from "@/server/link-api";
+import { BackendUnavailableError } from "@/server/link-api/types";
 import { getOrCreateVisitorId, readVisitorId } from "@/server/visitor";
 import { createLinkSchema } from "@/shared/schemas/link-schema";
 
@@ -48,7 +50,22 @@ export async function createLinkAction(
   }
 
   const ownerId = await getOrCreateVisitorId();
-  const result = await getLinkApi().createLink(ownerId, parsed.data);
+  let result;
+  try {
+    result = await getLinkApi().createLink(ownerId, parsed.data);
+  } catch (error) {
+    // Return the error as state (the form shows it) instead of throwing, so the
+    // visitor keeps what they typed.
+    if (error instanceof BackendUnavailableError) {
+      return {
+        status: "error",
+        error: BACKEND_UNAVAILABLE_MESSAGE,
+        fieldErrors: {},
+        values,
+      };
+    }
+    throw error;
+  }
 
   switch (result.status) {
     case "created":
@@ -84,9 +101,17 @@ export async function setLinkActiveAction(
   // Ownership is enforced in SQL (WHERE id AND owner_id), so another
   // visitor's id simply matches nothing.
   const ownerId = await readVisitorId();
-  const link = ownerId
-    ? await getLinkApi().setLinkActive(ownerId, id, isActive)
-    : null;
+  let link;
+  try {
+    link = ownerId
+      ? await getLinkApi().setLinkActive(ownerId, id, isActive)
+      : null;
+  } catch (error) {
+    if (error instanceof BackendUnavailableError) {
+      return { status: "error", error: BACKEND_UNAVAILABLE_MESSAGE };
+    }
+    throw error;
+  }
   if (!link) {
     return { status: "error", error: "Link not found" };
   }

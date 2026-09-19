@@ -7,7 +7,12 @@ export default function DashboardPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
       <Suspense
-        fallback={<p className="text-sm text-zinc-500">Loading links…</p>}
+        fallback={
+          <p className="text-sm text-zinc-500">
+            Loading links… (if the backend is asleep this can take up to a
+            minute)
+          </p>
+        }
       >
         <LinksList />
       </Suspense>

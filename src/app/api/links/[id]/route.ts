@@ -5,6 +5,7 @@ import { getLinkApi } from "@/server/link-api";
 import {
   errorResponse,
   json,
+  orUnavailable,
   readJsonBody,
   validationError,
 } from "@/server/http";
@@ -19,6 +20,10 @@ export async function PATCH(
   { params }: RouteContext<"/api/links/[id]">,
 ) {
   const { id } = await params;
+  return orUnavailable(() => setActive(request, id));
+}
+
+async function setActive(request: Request, id: string) {
 
   const raw = await readJsonBody(request);
   if (!raw.ok) return raw.response;

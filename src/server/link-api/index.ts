@@ -4,16 +4,20 @@
 // behind a Go/Java service. Switching is a config change plus a redeploy.
 import { getEnv } from "@/server/env";
 import { localLinkApi } from "./local";
+import { createRemoteLinkApi } from "./remote";
 import type { LinkApi } from "./types";
 
+let remote: LinkApi | undefined;
+
 export function getLinkApi(): LinkApi {
-  const { LINK_BACKEND } = getEnv();
-  switch (LINK_BACKEND) {
-    case "local":
-      return localLinkApi;
-    case "remote":
-      // Stage 2 (see docs/openapi.yaml): an HTTP adapter that calls
-      // LINK_BACKEND_URL with the bearer token and `cache: "no-store"`.
-      throw new Error("LINK_BACKEND=remote is not implemented yet");
-  }
+  const env = getEnv();
+  if (env.LINK_BACKEND === "local") return localLinkApi;
+
+  // env.ts already guaranteed both are set when LINK_BACKEND=remote; the `!`
+  // tells TypeScript what the runtime validation established.
+  remote ??= createRemoteLinkApi({
+    baseUrl: env.LINK_BACKEND_URL!,
+    token: env.LINK_BACKEND_TOKEN!,
+  });
+  return remote;
 }

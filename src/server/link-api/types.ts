@@ -5,7 +5,6 @@
 // Go/Java/C#/Python service that follows docs/openapi.yaml. The UI cannot tell
 // the difference, which is the point.
 import type { CreateLinkInput } from "@/shared/schemas/link-schema";
-import type { LinkStatus } from "@/shared/lib/link-status";
 
 // Structural, not a Drizzle row type: a remote adapter builds these from JSON.
 export type LinkRecord = {
@@ -38,12 +37,28 @@ export type FollowResult =
       afterResponse?: () => Promise<void>;
     }
   | { status: "not_found" }
-  | { status: "gone"; reason: Exclude<LinkStatus, "active"> };
+  // `message` is the human-readable reason, not a machine code: the contract's
+  // 410 response is plain text, so a remote backend can only hand us a message.
+  | { status: "gone"; message: string };
 
 export type ClickMeta = { referrer: string | null; userAgent: string | null };
 
+// Thrown when a backend cannot be reached or answers with something the contract
+// does not allow (timeout while it wakes up, 5xx, wrong token). Callers catch it
+// to show "try again" instead of a crash. Expected outcomes (404, 409, 429...)
+// are NOT errors; they come back as values (see the result types above).
+export class BackendUnavailableError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "BackendUnavailableError";
+  }
+}
+
+export type Implementation = { name: string; contractVersion: string };
+
 export interface LinkApi {
-  readonly implementation: { name: string; contractVersion: string };
+  // Async because a remote backend has to be asked (and may be asleep).
+  getMeta(): Promise<Implementation>;
   createLink(ownerId: string, input: CreateLinkInput): Promise<CreateLinkResult>;
   listLinks(ownerId: string): Promise<LinkRecord[]>;
   setLinkActive(
