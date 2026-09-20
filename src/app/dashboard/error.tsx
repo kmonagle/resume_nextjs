@@ -13,7 +13,8 @@ export default function DashboardError({
   return (
     <div className="mx-auto max-w-3xl px-6 py-10">
       <p className="text-sm text-red-600 dark:text-red-400">
-        Something went wrong loading your links.
+        Something went wrong loading your links. If you have just been idle, the
+        backend may still be waking up; try again in a moment.
       </p>
       <button
         onClick={() => retry()}

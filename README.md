@@ -114,6 +114,15 @@ them one after the other would double the wait. So:
 - **Footer never blocks a page:** with a remote backend the "Served by" line is
   fetched from the browser after load, so a sleeping backend never delays
   rendering.
+- **The dashboard never shows an error for a sleeping backend.** The server waits at most 6 seconds
+  for the first list of links (`src/server/with-timeout.ts`); if the backend hasn't answered it renders
+  the table in an amber "Waking the backend…" state and the browser keeps polling until it does (the
+  request that timed out keeps running, and is what wakes the service). The create form and the toggle
+  show the same "try again in a moment" message in amber, not red.
+- **The startup ping only covers a cold *Next.js*.** `src/instrumentation.ts` runs when the Next.js
+  process boots. Next.js and the backend sleep independently, so Next.js can be awake while the backend
+  sleeps; in that case nothing pings it until a real request (the footer's `/api/meta` call, or a page
+  that needs links) reaches it.
 - The default `LINK_BACKEND=local` needs no second service at all.
 
 ## Continuous integration

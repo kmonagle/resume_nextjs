@@ -18,13 +18,19 @@ export function LinkActiveToggle({
   // useTransition marks the async action as a low-priority update and gives us
   // `isPending`, without blocking the rest of the UI while the server works.
   const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; retryable: boolean } | null>(
+    null,
+  );
   const queryClient = useQueryClient();
 
   function handleClick() {
     startTransition(async () => {
       const result = await setLinkActiveAction(id, !isActive);
-      setError(result.status === "error" ? result.error : null);
+      setError(
+        result.status === "error"
+          ? { message: result.error, retryable: result.retryable === true }
+          : null,
+      );
       // Mark the list stale so the new state shows now, not at the next poll.
       if (result.status === "success") {
         await queryClient.invalidateQueries({ queryKey: LINKS_QUERY_KEY });
@@ -49,8 +55,16 @@ export function LinkActiveToggle({
             : "Activate"}
       </button>
       {error && (
-        <p role="alert" className="text-xs text-red-600 dark:text-red-400">
-          {error}
+        // Amber for "the backend is waking up, try again", red for real errors.
+        <p
+          role="alert"
+          className={
+            error.retryable
+              ? "text-xs text-amber-600 dark:text-amber-400"
+              : "text-xs text-red-600 dark:text-red-400"
+          }
+        >
+          {error.message}
         </p>
       )}
     </div>

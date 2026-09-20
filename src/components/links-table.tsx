@@ -34,15 +34,18 @@ async function fetchLinks(): Promise<LinkDto[]> {
   return response.json();
 }
 
-export function LinksTable({ initialLinks }: { initialLinks: LinkDto[] }) {
-  const { data: links, isError } = useQuery({
+// `initialLinks` is null when the server couldn't reach the backend in time (see
+// links-list.tsx): the table then starts empty, says the backend is waking up, and fills in as
+// soon as a poll succeeds.
+export function LinksTable({ initialLinks }: { initialLinks: LinkDto[] | null }) {
+  const { data, isError } = useQuery({
     queryKey: LINKS_QUERY_KEY,
     queryFn: fetchLinks,
     // Seeds the cache with the server-rendered snapshot so the first paint has
     // data. Gotcha: initialData is only used when the cache has NO entry for
     // this key; if the visitor already loaded the dashboard earlier, the cached
     // data wins. That is why creating a link also invalidates the query.
-    initialData: initialLinks,
+    initialData: initialLinks ?? undefined,
     // Poll. react-query pauses this while the tab is hidden (unless
     // refetchIntervalInBackground is set), so an abandoned tab costs nothing
     // and does not keep a scale-to-zero database awake.
@@ -51,6 +54,9 @@ export function LinksTable({ initialLinks }: { initialLinks: LinkDto[] }) {
     // stale, so returning to the page refetches immediately.
   });
 
+  // No data yet at all (the server gave up waiting and no poll has succeeded).
+  const waking = data === undefined;
+  const links = data ?? [];
   const activeCount = links.filter((link) => link.status === "active").length;
 
   return (
@@ -61,8 +67,8 @@ export function LinksTable({ initialLinks }: { initialLinks: LinkDto[] }) {
         </h1>
         <div className="flex items-center gap-4">
           <span className="text-sm text-zinc-500">
-            {activeCount} active
-            {isError && (
+            {waking ? "…" : `${activeCount} active`}
+            {isError && !waking && (
               <span className="ml-2 text-amber-600" role="status">
                 · live updates paused
               </span>
@@ -77,7 +83,13 @@ export function LinksTable({ initialLinks }: { initialLinks: LinkDto[] }) {
         </div>
       </div>
 
-      {links.length === 0 ? (
+      {waking ? (
+        // Amber, not red: this is the expected state of a free-tier backend, not a failure.
+        <p className="py-8 text-sm text-amber-600" role="status">
+          Waking the backend… this can take up to a minute on the free tier. This page will fill
+          in by itself.
+        </p>
+      ) : links.length === 0 ? (
         <p className="py-8 text-sm text-zinc-500">
           No links yet — create your first one.
         </p>

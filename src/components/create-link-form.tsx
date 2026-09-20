@@ -163,7 +163,15 @@ export function CreateLinkForm() {
           </p>
         )}
         {state.status === "error" && state.error && (
-          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+          // Amber for "the backend is waking up, try again", red for real errors.
+          <p
+            role="alert"
+            className={
+              state.retryable
+                ? "text-sm text-amber-600 dark:text-amber-400"
+                : "text-sm text-red-600 dark:text-red-400"
+            }
+          >
             {state.error}
           </p>
         )}

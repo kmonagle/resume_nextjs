@@ -22,6 +22,9 @@ export type CreateLinkState =
   | {
       status: "error";
       error?: string;
+      // True when the failure is temporary (the backend is waking up), so the form can show it
+      // as "try again in a moment" (amber) rather than as a mistake (red).
+      retryable?: boolean;
       fieldErrors: Record<string, string[] | undefined>;
       // React 19 resets uncontrolled forms after every action, so we echo what
       // the user typed back to repopulate the fields.
@@ -60,6 +63,7 @@ export async function createLinkAction(
       return {
         status: "error",
         error: BACKEND_UNAVAILABLE_MESSAGE,
+        retryable: true,
         fieldErrors: {},
         values,
       };
@@ -91,7 +95,7 @@ export async function createLinkAction(
 
 export type SetLinkActiveState =
   | { status: "success" }
-  | { status: "error"; error: string };
+  | { status: "error"; error: string; retryable?: boolean };
 
 export async function setLinkActiveAction(
   id: string,
@@ -108,7 +112,11 @@ export async function setLinkActiveAction(
       : null;
   } catch (error) {
     if (error instanceof BackendUnavailableError) {
-      return { status: "error", error: BACKEND_UNAVAILABLE_MESSAGE };
+      return {
+        status: "error",
+        error: BACKEND_UNAVAILABLE_MESSAGE,
+        retryable: true,
+      };
     }
     throw error;
   }
