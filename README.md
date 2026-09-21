@@ -129,7 +129,7 @@ keep a scale-to-zero database awake), and is plenty for a counter. The upgrade
 path would be Server-Sent Events. The server-rendered page seeds react-query with
 `initialData`, so there is no spinner on first paint.
 
-**Click limits are enforced by one atomic SQL statement.** `claimClick` checks
+**Click limits are enforced by one atomic SQL statement.** Each backend's claim query checks
 active / not expired / under `maxClicks` *and* increments in a single `UPDATE …
 RETURNING`. Postgres locks the row, so N concurrent requests against a limit-2
 link yield exactly two redirects, in any language. The contract suite fires 12
@@ -142,11 +142,15 @@ in parallel to prove it.
   cached; the counter is written on every click.
 - The reads are small indexed queries; caching would add invalidation risk for no
   measurable gain.
-- The one cache is react-query in the browser (`staleTime` 0, the interval drives
-  refreshes; creating a link or toggling one invalidates it). `GET /api/meta`
-  sends a short `Cache-Control` because it only changes on redeploy.
-- Two cache layers must both be invalidated after a write: Next's server/router
-  cache (`revalidatePath`) and react-query's browser cache (`invalidateQueries`).
+- No server-side data cache is added. The one cache we manage is react-query in
+  the browser (`staleTime` 0, the interval drives refreshes; creating a link or
+  toggling one invalidates it). `GET /api/meta` sends a short `Cache-Control`
+  because it only changes on redeploy.
+- Next also keeps its own browser-side **Client Cache** of rendered pages (used
+  mainly for back/forward navigation). After a write we clear both it
+  (`revalidatePath`) and react-query's cache (`invalidateQueries`). react-query
+  alone would keep the table correct; `revalidatePath` is cheap insurance so a
+  stored copy of `/dashboard` can't briefly show stale links.
 - When I *would* use Next's cache: shared, rarely-changing or expensive data (a
   public leaderboard, say) with `'use cache'` + `cacheTag` and `revalidateTag` from
   the mutation. `cacheComponents` is off here and nothing opts in.
