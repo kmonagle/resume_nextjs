@@ -136,8 +136,10 @@ link yield exactly two redirects, in any language. The contract suite fires 12
 in parallel to prove it.
 
 **Caching decisions — deliberately no server-side caching.**
-- The data is per-visitor and must be live; a server cache would fight the feature
-  and risks leaking one visitor's links to another.
+- The data is per-visitor and must be live. A server cache would fight the feature,
+  and it would have to be keyed per visitor (the URL is the same for everyone; only
+  the cookie differs), because getting that wrong would leak one visitor's links to
+  another. So we don't add one.
 - Every redirect must reach the atomic `UPDATE`, so the redirect path cannot be
   cached; the counter is written on every click.
 - The reads are small indexed queries; caching would add invalidation risk for no
