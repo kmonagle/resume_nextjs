@@ -101,28 +101,27 @@ answer 401 without it; otherwise anyone could call one with any `X-Owner-Id`.
 
 ## Free-tier cold starts
 
-On Render's free plan a service sleeps after 15 idle minutes and takes about a
-minute to wake. With a remote backend both services can be asleep, and waking
-them one after the other would double the wait. So:
+On Render's free plan a service sleeps after 15 idle minutes and takes from about ten seconds to a
+minute to wake (measured on Render: Go and C# about 12 s, Python about 22 s; the JVM is the slowest).
 
-- **Warm-up in parallel:** `src/instrumentation.ts` pings the backend's `/meta`
-  when Next starts (fire-and-forget, never awaited, because Next waits for
-  `register()` before accepting requests), so the two cold starts overlap.
-- **Long timeout:** backend calls allow 90 s. If the backend still cannot be
-  reached the API answers 503, short links answer 503 with `Retry-After`, and
-  the form shows a "waking up, try again" message instead of crashing.
-- **Footer never blocks a page:** with a remote backend the "Served by" line is
-  fetched from the browser after load, so a sleeping backend never delays
-  rendering.
-- **The dashboard never shows an error for a sleeping backend.** The server waits at most 6 seconds
-  for the first list of links (`src/server/with-timeout.ts`); if the backend hasn't answered it renders
-  the table in an amber "Waking the backend…" state and the browser keeps polling until it does (the
-  request that timed out keeps running, and is what wakes the service). The create form and the toggle
-  show the same "try again in a moment" message in amber, not red.
-- **The startup ping only covers a cold *Next.js*.** `src/instrumentation.ts` runs when the Next.js
-  process boots. Next.js and the backend sleep independently, so Next.js can be awake while the backend
-  sleeps; in that case nothing pings it until a real request (the footer's `/api/meta` call, or a page
-  that needs links) reaches it.
+**Only a public request wakes a sleeping service.** A request from this Next.js service to a sleeping
+backend (both on Render) gets Render's HTML `502` page straight away and does **not** wake it, whereas
+the same request from a browser or `curl` is held until the service is up. So to demo a backend on the
+free tier, wake it first by opening `https://<backend>/meta` (or `curl` it), then use the site. (An
+earlier design pinged the backend from a Next.js startup hook so the two would wake together; it was
+removed because server-to-server requests don't wake the service.)
+
+While the backend is asleep the UI degrades politely instead of crashing:
+
+- The JSON API answers `503`, short links answer `503` with `Retry-After`, and the create form and
+  toggle show a "try again in a moment" message in amber, not red.
+- The dashboard waits at most 6 seconds for the first list of links (`src/server/with-timeout.ts`),
+  then renders the table in an amber "Waking the backend…" state, and the browser keeps polling until
+  the backend answers.
+- The footer's "Served by" line is fetched by the browser after load, so a sleeping backend never delays
+  a page render.
+- **Don't try to keep everything awake.** A free workspace gets about 750 instance-hours a month; one
+  always-on service uses about 730.
 - The default `LINK_BACKEND=local` needs no second service at all.
 
 ## Continuous integration

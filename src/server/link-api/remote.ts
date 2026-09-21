@@ -22,8 +22,8 @@ import {
   type LinkRecord,
 } from "./types";
 
-// Render's free tier takes about a minute to wake a sleeping service, so a
-// short timeout would turn every cold start into an error.
+// Generous, because a free-tier service can take up to a minute to answer once it is awake (and
+// a host that holds requests while a service wakes would make a cold start just a slow request).
 export const REQUEST_TIMEOUT_MS = 90_000;
 
 // `z.ZodType<LinkDto>` makes the compiler check this schema against the type

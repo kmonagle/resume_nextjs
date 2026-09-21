@@ -34,8 +34,7 @@ export async function LinksList() {
   } catch (error) {
     // Slow or unreachable backend: not an error worth a red page. `null` tells
     // the table "no data yet": it shows a waking-up message and the browser
-    // polls /api/links until the backend answers. The request that timed out
-    // here is still running, and is what wakes a sleeping backend.
+    // polls /api/links until the backend answers.
     if (!(error instanceof BackendUnavailableError)) {
       throw error; // a genuine bug should still reach error.tsx
     }
