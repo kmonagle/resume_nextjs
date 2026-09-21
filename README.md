@@ -1,21 +1,86 @@
-# Short links — a Next.js URL shortener built around a contract
+# Short links — one API, four backends, one Next.js UI
 
-Create short links, follow them, and watch click counts update live on the
-dashboard. The app is a deliberately small vehicle for a larger idea: **the UI
-is a thin Next.js front end / BFF, and the thing that stores links is
-interchangeable** (today this app's own Drizzle code; later Go, Java, C# or
-Python services), held together by an OpenAPI contract and a shared test suite.
+## Start here
 
-Every source file starts with a comment saying why it exists; non-obvious code
-carries "why" comments. Read the code with those and you have a guided tour.
+**One small API, built four times, in four ecosystems.** Create a short link, follow it
+(`/r/{code}`), watch its click count, disable it. The interesting part is not the feature; it is
+that the same behaviour is delivered by **Go, Python (FastAPI), C# (ASP.NET Core) and Java (Spring
+Boot)** services that share one Postgres, and that this **Next.js app is only the UI and a
+backend-for-frontend (BFF)**: it holds no data, and which backend it talks to is one setting
+(`LINK_BACKEND_URL`).
+
+```
+Browser ──► Next.js (UI + BFF) ──► one backend ──► shared Postgres
+                                   Go | Python | C# | Java
+```
+
+What holds it together is small on purpose:
+
+- **A contract, written first:** [`docs/openapi.yaml`](docs/openapi.yaml). TypeScript types are generated from it.
+- **One shared test suite** ([`contract-tests/`](contract-tests)) that every backend must pass
+  unchanged, run in each backend's own CI and again through this app in front of each backend.
+  It checks what a schema cannot: atomic click limits under concurrency, owner isolation, expiry.
+- **Each backend is a normal, idiomatic project for its ecosystem**, with its own README and comments
+  that translate every idiom for a TypeScript reader ("JS/TS vs Go", and so on).
+
+| Repo | Framework | Data access | Validation | Concurrency model | Tests | Formatter / lint |
+|---|---|---|---|---|---|---|
+| [`resume_go`](https://github.com/kmonagle/resume_go) | `net/http` (standard library) | `pgx` + hand-written SQL | by hand, in a validator | a goroutine per request | `go test`, `httptest`, fake store | `gofmt`, `go vet` |
+| [`resume_python`](https://github.com/kmonagle/resume_python) | FastAPI | SQLAlchemy 2 (async) | pydantic | one event loop, `async`/`await` | `pytest`, fake store | `ruff` |
+| [`resume_csharp`](https://github.com/kmonagle/resume_csharp) | ASP.NET Core minimal APIs | EF Core | hand-written validator | thread pool + `async`/`await` | xUnit, `WebApplicationFactory` | `dotnet format` |
+| [`resume_java`](https://github.com/kmonagle/resume_java) | Spring Boot 4 (Java 25) | Spring Data JPA / Hibernate | hand-written validator + sealed results | virtual threads | JUnit, MockMvc | Spotless |
+
+### Same concept, different tool
+
+| Concept | Go | Python | C# | Java |
+|---|---|---|---|---|
+| Routing | `ServeMux` patterns | decorators on a router | `MapGet` / `MapPost` | `@RestController` annotations |
+| Dependency injection | plain constructors | `Depends(...)` | built-in container (`AddScoped`) | Spring beans |
+| Config | environment, read once | pydantic settings | options pattern + `ValidateOnStart` | `@ConfigurationProperties` |
+| Persistence | `pgx` pool | async session per request | `DbContext` per request | JPA `EntityManager` |
+| The atomic click | one guarded `UPDATE … RETURNING` | same, via SQLAlchemy | `ExecuteUpdate` (rows affected) | a `@Modifying` `@Query` (rows affected) |
+| Containerising | multi-stage, static binary | slim image + uvicorn | SDK build, runtime image | JDK build, JRE image |
+
+The concepts are the same everywhere (parameterised SQL, an atomic check-and-increment, owner-scoped
+queries that answer 404 rather than 403, bearer-token auth, `ON CONFLICT DO NOTHING` inserts). The
+tools are what differ, and each backend README says why it made the choices it did.
+
+### Known differences (honest version)
+
+Sending the same 45 requests to all four backends, 29 answered identically and 16 differed. The
+differences come from each framework's defaults, not from bugs in the behaviour the contract tests
+check. Three clear violations of the spec were **fixed** (a C# number-as-string was accepted; Go's
+unknown-short-code 404 was cacheable; Go accepted a non-JSON content type), and each is now a test in
+the shared suite. The rest are **documented, not forced to match**, because forcing them would mean
+fighting the framework:
+
+| Difference | Go and C# | Python and Java | Where it comes from |
+|---|---|---|---|
+| A wrong-typed value (`"maxClicks": true`, a number for `targetUrl`) | error under `body` | error under the field name (Python always; Java when creating, not when toggling) | Go and C# fail while decoding the whole body; pydantic validates per field |
+| Wording of a malformed-JSON message | "Body must be valid JSON…" (also Java) | pydantic's own message (Python) | messages are not part of the contract |
+| Property names with the wrong case (`TargetUrl`) | accepted | rejected | `encoding/json` and `System.Text.Json` match names case-insensitively by default |
+| No token together with a bad body | 401 (also Java) | 400 (Python) | FastAPI parses the body before the auth check runs |
+| Unknown route or wrong method: the body | plain text (Go), empty (C#) | JSON, in two different shapes | the spec only defines the documented routes |
+
+This app's own browser-facing routes under `/api` are a different interface (they read a cookie,
+coerce form strings to numbers and let Next answer unknown routes), so the strictness cases in the
+suite run against the four backends only; the rest of the suite runs through this app too.
+
+The backends share one contract in this repo, so a contract change turns each backend's CI red until
+it is updated (their CI checks out the contract at `main`). That is a deliberate simplification for a
+one-owner project; with several teams you would version it.
 
 ## Try it locally
 
 ```bash
+# 1. A database, and the schema (any backend repo can run against it)
 docker run -d --name links-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=links -p 54329:5432 postgres:17
-cp .env.example .env.local   # then set both URLs to postgres://postgres:dev@localhost:54329/links
+DIRECT_URL=postgres://postgres:dev@localhost:54329/links npx drizzle-kit migrate
+# 2. Start one backend (see its README), e.g. resume_go on :8080 with the same
+#    DATABASE_URL and LINK_BACKEND_TOKEN.
+# 3. Point this app at it and run
+cp .env.example .env.local   # set LINK_BACKEND_URL (e.g. http://localhost:8080) and LINK_BACKEND_TOKEN
 npm install
-npx drizzle-kit migrate      # export DIRECT_URL first, or use `npm run build`, which migrates
 npm run dev
 ```
 
@@ -29,29 +94,30 @@ npm run dev
 ## Architecture
 
 ```
-Browser ──► Next.js (UI + BFF) ──► LinkApi ──► local adapter ──► Postgres
-                                        └────► remote adapter ──► Go (Java / C# / Python later) ──► same Postgres
+Browser ──► Next.js (UI + BFF) ──► LinkApi (HTTP adapter) ──► one backend ──► shared Postgres
+                                                               (Go | Python | C# | Java)
 ```
 
 - **`LinkApi`** (`src/server/link-api/types.ts`) is the seam. Server Actions and
-  route handlers depend on it, never on a database. `LINK_BACKEND=local|remote`
-  picks the implementation at deploy time. `remote` calls a backend over HTTP
-  (`LINK_BACKEND_URL`, authenticated with `LINK_BACKEND_TOKEN`); the Go service in
-  the sibling `resume_go` repo is the first one. Short links stay on this app's
+  route handlers depend on it, never on a database. The adapter calls a backend
+  over HTTP (`LINK_BACKEND_URL`, authenticated with `LINK_BACKEND_TOKEN`), so
+  switching backends is a setting plus a redeploy. Short links stay on this app's
   domain: `/r/{code}` calls the backend's redirect and passes its `Location` on.
 - **The contract** is `docs/openapi.yaml`, written first. TypeScript types are
   generated from it (a drift between contract and code fails `tsc`), and
   `contract-tests/` checks what a schema cannot express: atomic click limits
-  under concurrency, owner isolation, expiry, conflicts. Any backend, including
-  the standalone Next.js one, must pass the same suite unchanged.
+  under concurrency, owner isolation, expiry, conflicts. Every backend must pass
+  the same suite unchanged.
 - **Layers:** `src/shared` (pure, used by both sides) · `src/server` (server-only:
-  env, DB, repository, adapters, actions) · `src/app` (routes) · `src/components`.
-  Only `src/server/repositories` writes SQL.
+  env, the backend adapter, actions) · `src/app` (routes) · `src/components`.
+  This app writes no SQL; only the backends do.
 - **One shared Postgres.** Backends share a schema so implementations are
   swappable and links carry across them. In real microservices, sharing a
   database couples services and is usually an anti-pattern; here it is a
   deliberate choice to make the implementations interchangeable. Migrations live
-  only in this repo; backends never migrate.
+  only in this repo (`drizzle/`, generated from `src/server/db/schema.ts`; `npm run
+  build` applies them); backends never migrate. That is a known simplification: a
+  larger setup would give the contract and migrations their own repo.
 
 ## Decisions worth talking about
 
@@ -122,26 +188,22 @@ While the backend is asleep the UI degrades politely instead of crashing:
   a page render.
 - **Don't try to keep everything awake.** A free workspace gets about 750 instance-hours a month; one
   always-on service uses about 730.
-- The default `LINK_BACKEND=local` needs no second service at all.
 
 ## Continuous integration
 
 `.github/workflows/ci.yml` has two jobs:
 
-- **`test`**: lint, types, unit tests, build (which applies the migrations), and the
-  contract suite against this app running on its own (`LINK_BACKEND=local`).
+- **`test`**: lint, types, unit tests, and build (which applies the migrations).
 - **`remote`**: runs once per backend in a matrix (Go, Python, C#, Java). It starts a throwaway
   Postgres, builds and starts that backend's Docker image from its repo, starts this
-  app with `LINK_BACKEND=remote` pointed at it, checks `/api/meta` names the backend
-  (so a run can't pass by silently staying in local mode), and runs the same contract
+  app pointed at it, checks `/api/meta` names the backend, and runs the same contract
   suite. Each backend's own CI proves it passes the contract when called directly;
   this job proves the path the live site uses: browser → this app → backend. Adding a
   backend is one line in the matrix. Backends are checked out at `main`, so a breaking
-  change over there shows up here; pin a `ref` to freeze one.
+  change over there shows up here.
 
 ## Status and next steps
 
-Done: the `local` and `remote` implementations, the contract, and tests. The same
-contract suite passes against the standalone app, against the Go, Python, C# and Java services
-directly, and against this app in `remote` mode in front of each of them (all in CI).
-Next: more backends, which each need only their own repo and one matrix line here. See `REVIEW.md` for the code review and open items.
+Done: the contract, four backends, and tests. The same contract suite passes against the Go,
+Python, C# and Java services directly and against this app in front of each of them (all in CI).
+Adding a backend needs only its own repo and one matrix line here. See `REVIEW.md` for the code review and open items.

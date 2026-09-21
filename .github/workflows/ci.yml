@@ -1,8 +1,7 @@
 # Why this file exists: runs the checks on every push.
-#   test   - lint, types, unit tests, build, and the contract suite against this
-#            app running on its own (LINK_BACKEND=local).
-#   remote - proves the PATH the live site uses: this app in LINK_BACKEND=remote
-#            mode, in front of each other-language backend, passing the same
+#   test   - lint, types, unit tests, and build (which applies the migrations).
+#   remote - this app is UI/BFF only, so the contract suite runs through it: this
+#            app in front of each backend (Go, Python, C#, Java), passing the same
 #            contract suite. Each backend repo's own CI proves that backend passes
 #            the contract when called directly; this job proves the Next.js
 #            adapter (src/server/link-api/remote.ts) works against it.
@@ -21,7 +20,6 @@ jobs:
           --health-cmd "pg_isready -U postgres" --health-interval 5s
           --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgres://postgres:dev@localhost:5432/links
       DIRECT_URL: postgres://postgres:dev@localhost:5432/links
       NEXT_PUBLIC_BASE_URL: http://localhost:3000
     steps:
@@ -35,11 +33,6 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build # also applies migrations (drizzle-kit migrate)
-      - name: Contract tests against the local implementation
-        run: |
-          npm start &
-          npx wait-on http://localhost:3000/api/meta
-          npm run test:contract
 
   # Runs once per backend in the matrix. To cover a new backend, add ONE line to
   # `include`: its repo (which must have a Dockerfile that listens on $PORT, default
@@ -68,9 +61,9 @@ jobs:
       DATABASE_URL: postgres://postgres:dev@localhost:5432/links
       DIRECT_URL: postgres://postgres:dev@localhost:5432/links
       NEXT_PUBLIC_BASE_URL: http://localhost:3000
-      # Everything below tells THIS app to call a backend instead of using its own
-      # database code. The token is shared with the backend container started below.
-      LINK_BACKEND: remote
+      # Everything below tells THIS app which backend to call. The token is shared
+      # with the backend container started below. DATABASE_URL is for the backend
+      # container only; this app never connects to the database.
       LINK_BACKEND_URL: http://localhost:8080
       LINK_BACKEND_TOKEN: ci-remote-token-0123456789abcdef
     steps:
@@ -103,13 +96,11 @@ jobs:
           done
           echo "backend did not start" && exit 1
 
-      - name: Start this app in remote mode
+      - name: Start this app
         run: |
           npm start > next.log 2>&1 &
           npx wait-on http://localhost:3000/api/meta
-          # Prove the request really went THROUGH the backend: in local mode this
-          # would say "Next.js + Drizzle", and the contract suite could pass without
-          # the remote adapter ever being used.
+          # Prove the request really went THROUGH the expected backend.
           curl -sf http://localhost:3000/api/meta | tee /dev/stderr | grep -qF "${{ matrix.expect }}"
 
       - name: Contract tests through this app to the backend

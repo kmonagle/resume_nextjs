@@ -1,12 +1,11 @@
 // Why this file exists: the seam between "what the app needs" and "who does
 // it". Actions and route handlers depend on this interface, never on a
-// database or a specific backend. Today one adapter implements it with
-// Drizzle (local.ts); later a remote adapter can implement it by calling a
-// Go/Java/C#/Python service that follows docs/openapi.yaml. The UI cannot tell
-// the difference, which is the point.
+// database or a specific backend. The one adapter (remote.ts) implements it by
+// calling a Go/Python/C#/Java service that follows docs/openapi.yaml. The UI
+// cannot tell which one, which is the point.
 import type { CreateLinkInput } from "@/shared/schemas/link-schema";
 
-// Structural, not a Drizzle row type: a remote adapter builds these from JSON.
+// Structural, not a database row type: the adapter builds these from JSON.
 export type LinkRecord = {
   id: string;
   shortCode: string;
@@ -30,10 +29,9 @@ export type FollowResult =
   | {
       status: "ok";
       targetUrl: string;
-      // Work the adapter wants done AFTER the redirect has been sent (the
-      // local adapter logs the click event here). The route hands it to
-      // Next's after(); a remote adapter, whose backend does its own
-      // bookkeeping, simply omits it.
+      // Work an adapter may want done AFTER the redirect has been sent. The
+      // route hands it to Next's after(). The HTTP adapter's backend does its
+      // own bookkeeping (click logging), so today it is always omitted.
       afterResponse?: () => Promise<void>;
     }
   | { status: "not_found" }

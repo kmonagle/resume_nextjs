@@ -9,7 +9,10 @@ import {
   api,
   createLink,
   follow,
+  followCacheControl,
+  isBackendInterface,
   newOwner,
+  rawCreate,
   rawWithoutToken,
   sleep,
   usesBearerToken,
@@ -188,5 +191,33 @@ describe("GET /r/{code}", () => {
 describe.runIf(usesBearerToken)("authentication (backend-to-backend)", () => {
   it("rejects a wrong bearer token with 401", async () => {
     expect((await rawWithoutToken()).status).toBe(401);
+  });
+});
+
+// Strictness rules: JSON types are not coerced, bodies must be application/json,
+// and a 404 on /r is never cacheable. Backends only (see isBackendInterface).
+describe.skipIf(!isBackendInterface)("strictness (backend interface)", () => {
+  it("rejects a number sent as a string", async () => {
+    const { status } = await rawCreate(
+      newOwner(),
+      JSON.stringify({ targetUrl: "https://example.com", maxClicks: "5" }),
+      "application/json",
+    );
+    expect(status).toBe(400);
+  });
+
+  it("rejects a JSON body that is not sent as application/json", async () => {
+    const { status } = await rawCreate(
+      newOwner(),
+      JSON.stringify({ targetUrl: "https://example.com" }),
+      "text/plain",
+    );
+    expect(status).toBe(400);
+  });
+
+  it("never caches the 404 for an unknown short code", async () => {
+    const { status, cacheControl } = await followCacheControl("does-not-exist-0");
+    expect(status).toBe(404);
+    expect(cacheControl).toContain("no-store");
   });
 });

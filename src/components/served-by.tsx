@@ -1,9 +1,8 @@
-// Why this file exists: the footer's "Served by: ..." line. With the local
-// implementation the name is known instantly and rendered on the server. With a
-// remote backend, finding it out means asking that backend, which may be asleep
-// (about a minute on Render's free tier). Waiting for that on the server would
-// delay EVERY page, so the browser asks after the page has loaded instead, and
-// the line fills in when the answer arrives.
+// Why this file exists: the footer's "Served by: ..." line, which names the
+// backend that answered. Finding that out means asking the backend, which may be
+// asleep (about a minute on Render's free tier). Waiting for that on the server
+// would delay EVERY page, so the browser asks after the page has loaded instead,
+// and the line fills in when the answer arrives.
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
@@ -16,11 +15,10 @@ async function fetchMeta(): Promise<Meta> {
   return response.json();
 }
 
-export function ServedBy({ initial }: { initial: Meta | null }) {
+export function ServedBy() {
   const { data } = useQuery({
     queryKey: ["meta"],
     queryFn: fetchMeta,
-    initialData: initial ?? undefined,
     // Changes only on redeploy, so unlike the links list there is no polling
     // and a long staleTime.
     staleTime: 5 * 60_000,

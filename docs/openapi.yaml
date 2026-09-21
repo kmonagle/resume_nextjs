@@ -3,8 +3,8 @@ info:
   title: Short link backend contract
   version: "1"
   description: |
-    The contract every backend implementation (Next.js/Drizzle, Go, Java,
-    C#, Python) must satisfy. It is the source of truth: types are generated
+    The contract every backend implementation (Go, Python, C#, Java) must
+    satisfy. It is the source of truth: types are generated
     from it (`npm run gen:api`) and `contract-tests/` verifies behaviour that a
     schema alone cannot express (atomic click limits, owner isolation, expiry).
 
@@ -22,6 +22,19 @@ info:
     ## Open endpoints
     `GET /r/{code}` and `GET /meta` need no token: anonymous visitors follow
     short links, and /meta is a harmless health/identity probe.
+
+    ## Strictness
+    - Request bodies are `application/json`; any other content type is a 400.
+    - JSON types are not coerced: `"maxClicks": "5"` (a string) is a 400.
+    - Property names are case-sensitive.
+    - Error `fieldErrors` are keyed by the field name for rule violations
+      (`targetUrl`, `maxClicks`, ...) and by `body` for structural problems
+      (malformed JSON, wrong types, wrong content type). The wording of the
+      messages is not part of the contract.
+    - Every response to `GET /r/{code}` (redirect, 404, 410) must send
+      `Cache-Control: no-store`, so each hit reaches the server.
+    - Only the routes in this document are specified: bodies for unknown
+      paths or methods are up to the framework.
 servers:
   - url: http://localhost:8080
     description: A backend implementation

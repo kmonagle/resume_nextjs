@@ -1,5 +1,4 @@
-// Why this file exists: the guard rails for a public demo, in one place so the
-// enforcing code (server) and the explanatory text (footer) cannot drift apart.
-export const MAX_LINKS_PER_OWNER = 20;
-export const MAX_LINKS_TOTAL = 5000;
+// Why this file exists: the one demo guard-rail the UI mentions to visitors. The
+// backends enforce the limits themselves (20 links per visitor, 5,000 in total,
+// 30-day retention); the number here only feeds the form's explanatory note.
 export const LINK_RETENTION_DAYS = 30;

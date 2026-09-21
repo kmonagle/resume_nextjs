@@ -63,6 +63,29 @@ export async function rawWithoutToken() {
   });
 }
 
+// A POST to /links with full control of the body and Content-Type, for the
+// strictness cases the typed `api` helper cannot express (it always sends JSON).
+export async function rawCreate(owner: string, body: string, contentType: string) {
+  const response = await fetch(`${baseUrl}${prefix}/links`, {
+    method: "POST",
+    headers: { ...identityHeaders(owner), "Content-Type": contentType },
+    body,
+  });
+  return { status: response.status };
+}
+
+// Like `follow`, but also exposes the Cache-Control header of the answer.
+export async function followCacheControl(code: string) {
+  const response = await fetch(`${baseUrl}/r/${code}`, { redirect: "manual" });
+  return { status: response.status, cacheControl: response.headers.get("cache-control") };
+}
+
+// The strictness cases below are about the BACKEND interface (bearer token +
+// X-Owner-Id), so they only run in header mode. The BFF's browser-facing routes
+// are a different interface: they coerce form strings to numbers, do not check
+// the content type, and answer unknown short codes with Next's HTML 404 page.
+export const isBackendInterface = identity === "header";
+
 export function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

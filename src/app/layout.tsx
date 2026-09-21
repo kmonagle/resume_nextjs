@@ -6,7 +6,6 @@ import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import { Nav } from "@/components/nav";
 import { Providers } from "@/components/providers";
 import { ServedBy } from "@/components/served-by";
-import { getKnownImplementation } from "@/server/link-api/implementation";
 import "./globals.css";
 
 const plexSans = IBM_Plex_Sans({
@@ -29,9 +28,6 @@ export const metadata: Metadata = {
 // LayoutProps is a typed helper Next generates from the app/ folder structure
 // (see `next typegen`), so `children` and any parallel slots are typed for us.
 export default function RootLayout({ children }: LayoutProps<"/">) {
-  // Non-null only for the local implementation; a remote backend is asked from
-  // the browser (see ServedBy) so a sleeping backend never delays page renders.
-  const known = getKnownImplementation();
   return (
     <html lang="en">
       <body
@@ -40,14 +36,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <Providers>
           <Nav />
           {children}
-          <ServedBy
-            initial={
-              known && {
-                implementation: known.name,
-                contractVersion: known.contractVersion,
-              }
-            }
-          />
+          <ServedBy />
         </Providers>
       </body>
     </html>

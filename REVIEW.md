@@ -17,10 +17,11 @@ where noted, by tests.
    (`link-schema.ts`, unit-tested).
 3. **Neon's pooled URL needs `prepare: false`.** PgBouncer in transaction mode
    cannot run the named prepared statements `postgres.js` uses, which fails
-   intermittently in production. *Fixed* in `db/client.ts`.
+   intermittently in production. *Fixed at the time in the Next.js database client; that client has since been
+   removed (this app is UI/BFF only) and each backend handles PgBouncer itself.*
 4. **`DATABASE_URL!` non-null assertion.** A missing variable became an
    `undefined` URL and a confusing error later. *Fixed:* zod-validated env
-   (`src/server/env.ts`), unit-tested.
+   (`src/server/env.ts`), unit-tested; it now validates `LINK_BACKEND_URL` and `LINK_BACKEND_TOKEN`.
 
 ## Medium
 

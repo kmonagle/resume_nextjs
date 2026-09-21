@@ -1,8 +1,9 @@
 // Single source of truth for the database shape. Drizzle infers both the SQL
 // migrations (via drizzle-kit) and the TypeScript row types from these
 // definitions, so the schema is plain TypeScript rather than a separate DSL.
-// This schema is also the shared contract every backend implementation
-// (Next.js, Go, Java, ...) reads and writes, so change it deliberately.
+// This app no longer queries the database itself: the schema lives here only to
+// generate the SQL migrations (drizzle/) that every backend (Go, Python, C#,
+// Java) relies on, so change it deliberately.
 import { relations } from "drizzle-orm";
 import {
   boolean,

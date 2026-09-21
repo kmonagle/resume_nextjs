@@ -1,7 +1,7 @@
 // Why this file exists: pins down how the remote adapter maps HTTP answers onto
 // the LinkApi contract, and how it fails, using a faked `fetch` so no backend is
 // needed. The real end-to-end check is the contract suite run against a
-// Next.js server that is configured with LINK_BACKEND=remote.
+// Next.js server that is pointed at a backend (LINK_BACKEND_URL).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createRemoteLinkApi } from "./remote";

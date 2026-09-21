@@ -1,6 +1,6 @@
 # `schema.ts`
 
-Defines the two Postgres tables this app (and every backend implementation of `docs/openapi.yaml`) uses, as plain TypeScript — this file is the single source of truth for both the database structure and the TypeScript types Drizzle infers from it. There is no separate schema language to learn (unlike Prisma's `.prisma` DSL); `pgTable(...)` calls *are* the schema, and running them through `drizzle-kit` is what turns them into real SQL migrations (see "How migrations work" below).
+Defines the two Postgres tables every backend implementation of `docs/openapi.yaml` uses (this app only generates the migrations from it, and never queries the database), as plain TypeScript — this file is the single source of truth for both the database structure and the TypeScript types Drizzle infers from it. There is no separate schema language to learn (unlike Prisma's `.prisma` DSL); `pgTable(...)` calls *are* the schema, and running them through `drizzle-kit` is what turns them into real SQL migrations (see "How migrations work" below).
 
 ## Tables
 
@@ -40,10 +40,10 @@ Two indexes: `[linkId, occurredAt]` (composite — supports "all clicks for link
 
 Strictly speaking, `clickCount` is redundant — it's just `COUNT(*)` of `click_events` for that link. We store it anyway, directly on `links`, for two reasons:
 
-1. **Cap-checking needs to be cheap and atomic.** Every redirect has to check "has this link hit its `maxClicks` limit?" A running counter on the row itself lets that check happen as part of a single guarded `UPDATE` statement (`claimClick` in `link-repository.ts`) — no `COUNT(*)` subquery on the hot path. That one statement checks active/expiry/`maxClicks` *and* increments, so concurrent requests cannot overshoot a limit: Postgres locks the row and the second request re-evaluates the `WHERE` clause against the already-incremented value.
+1. **Cap-checking needs to be cheap and atomic.** Every redirect has to check "has this link hit its `maxClicks` limit?" A running counter on the row itself lets that check happen as part of a single guarded `UPDATE` statement (each backend's atomic claim query) — no `COUNT(*)` subquery on the hot path. That one statement checks active/expiry/`maxClicks` *and* increments, so concurrent requests cannot overshoot a limit: Postgres locks the row and the second request re-evaluates the `WHERE` clause against the already-incremented value.
 2. **List views need it cheaply too.** The dashboard shows click counts for potentially many links at once; reading an integer column is much cheaper than aggregating `click_events` per row.
 
-The tradeoff: `clickCount` can drift from reality if it's ever updated outside the guarded increment path. We accept that because every write to it goes through one function (`claimClick` in `link-repository.ts`) — there's exactly one place in the codebase allowed to increment it. Any other backend implementation must reproduce that single guarded statement; `contract-tests/` verifies it.
+The tradeoff: `clickCount` can drift from reality if it's ever updated outside the guarded increment path. We accept that because every write to it goes through one function (each backend's atomic claim query) — there's exactly one place in the codebase allowed to increment it. Any other backend implementation must reproduce that single guarded statement; `contract-tests/` verifies it.
 
 ## Relations
 

@@ -6,25 +6,15 @@
 // them into the browser bundle. Anything without that prefix stays on the server.
 import { z } from "zod";
 
-const envSchema = z
-  .object({
-    DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
-    // Which implementation serves the link API. "local" = this app's own
-    // Drizzle code; "remote" = an HTTP backend (Go/Java/...) that implements
-    // docs/openapi.yaml. It is a deployment setting, not a UI feature.
-    LINK_BACKEND: z.enum(["local", "remote"]).default("local"),
-    LINK_BACKEND_URL: z.url().optional(),
-    LINK_BACKEND_TOKEN: z.string().min(16).optional(),
-  })
-  .refine(
-    (env) =>
-      env.LINK_BACKEND !== "remote" ||
-      (env.LINK_BACKEND_URL && env.LINK_BACKEND_TOKEN),
-    {
-      message:
-        "LINK_BACKEND=remote requires LINK_BACKEND_URL and LINK_BACKEND_TOKEN",
-    },
-  );
+// This app is a UI + BFF (backend-for-frontend): it holds no data of its own and
+// talks to one backend API that implements docs/openapi.yaml (Go, Python, C# or
+// Java). Which one is a deployment setting: point LINK_BACKEND_URL at it.
+const envSchema = z.object({
+  LINK_BACKEND_URL: z.url("LINK_BACKEND_URL must be a full URL"),
+  // Shared secret sent to the backend as "Authorization: Bearer <token>". It
+  // must match the backend's own LINK_BACKEND_TOKEN.
+  LINK_BACKEND_TOKEN: z.string().min(16, "LINK_BACKEND_TOKEN must be at least 16 characters"),
+});
 
 export type Env = z.infer<typeof envSchema>;
 
